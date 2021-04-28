@@ -216,9 +216,15 @@ workflow AMPLISEQ {
 	/*
 	* Create a channel for input read files
 	*/
-	PARSE_INPUT ( params.input, single_end, params.multiple_sequencing_runs, params.extension )
-	ch_reads = PARSE_INPUT.out.reads
-	ch_fasta = PARSE_INPUT.out.fasta
+	if (params.barcodes) {
+	   DEMULTIPLEX ( params.input, params.barcodes, single_end, params.multiple_sequencing_runs, params.extension )
+	   ch_reads = DEMULTIPLEX.out.reads
+	   ch_fasta = DEMULTIPLEX.out.fasta
+	} else {
+	   PARSE_INPUT ( params.input, single_end, params.multiple_sequencing_runs, params.extension )
+	   ch_reads = PARSE_INPUT.out.reads
+	   ch_fasta = PARSE_INPUT.out.fasta
+	}
 
     /*
      * MODULE: Rename files
