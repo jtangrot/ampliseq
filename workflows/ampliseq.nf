@@ -19,21 +19,21 @@ if (params.classifier) {
 	ch_qiime_classifier = Channel.fromPath("${params.classifier}", checkIfExists: true)
 } else { ch_qiime_classifier = Channel.empty() }
 
-if( params.tax_to_classifier && params.fasta_to_classifier && !params.skip_taxonomy ){
-	ch_fasta_to_classifier = Channel.fromPath("${params.fasta_to_classifier}", checkIfExists: true)
-	ch_tax_to_classifier = Channel.fromPath("${params.tax_to_classifier}", checkIfExists: true)
-} else { 
-	ch_fasta_to_classifier = Channel.empty()
-	ch_tax_to_classifier = Channel.empty()
-}
-
 if (params.dada_ref_taxonomy && !params.skip_taxonomy) {
-	// Check if genome exists in the config file
-	if (params.genomes && params.dada_ref_taxonomy && !params.genomes.containsKey(params.dada_ref_taxonomy)) {
-		exit 1, "The provided reference taxonomy '${params.dada_ref_taxonomy}' is not available in the 'conf/ref_databases.config' file. Currently the available reference taxonomies are ${params.genomes.keySet().join(', ')}"
+	// Check if ref_taxonomy exists in the config file
+	if (params.dada_ref_databases && params.dada_ref_taxonomy && !params.dada_ref_databases.containsKey(params.dada_ref_taxonomy)) {
+		exit 1, "The provided DADA2 reference taxonomy '${params.dada_ref_taxonomy}' is not available in the 'conf/ref_databases.config' file. Currently the available reference taxonomies are ${params.dada_ref_databases.keySet().join(', ')}"
 	}
-	ch_dada_ref_taxonomy = Channel.fromList(params.genomes[params.dada_ref_taxonomy]["file"]).map { file(it) }
+	ch_dada_ref_taxonomy = Channel.fromList(params.dada_ref_databases[params.dada_ref_taxonomy]["file"]).map { file(it) }
 } else { ch_dada_ref_taxonomy = Channel.empty() }
+
+if (params.qiime_ref_taxonomy && !params.skip_taxonomy && !params.classifier) {
+	// Check if ref_taxonomy exists in the config file
+	if (params.qiime_ref_databases && params.qiime_ref_taxonomy && !params.qiime_ref_databases.containsKey(params.qiime_ref_taxonomy)) {
+		exit 1, "The provided QIIME2 reference taxonomy '${params.qiime_ref_taxonomy}' is not available in the 'conf/ref_databases.config' file. Currently the available reference taxonomies are ${params.qiime_ref_databases.keySet().join(', ')}"
+	}
+	ch_qiime_ref_taxonomy = Channel.fromList(params.qiime_ref_databases[params.qiime_ref_taxonomy]["file"]).map { file(it) }
+} else { ch_qiime_ref_taxonomy = Channel.empty() }
 
 /*
  * Set variables
@@ -49,7 +49,7 @@ if ( !single_end && !params.illumina_pe_its && (params.trunclenf == false || par
 } else { find_truncation_values = false }
 
 //only run QIIME2 when taxonomy is actually calculated and all required data is available
-if ( !params.enable_conda && !params.skip_taxonomy ) {
+if ( !params.enable_conda && !params.skip_taxonomy && !params.skip_qiime ) {
 	run_qiime2 = true
 } else { run_qiime2 = false }
 
@@ -132,12 +132,16 @@ include { DADA2_RMCHIMERA               } from '../modules/local/dada2_rmchimera
 include { DADA2_STATS                   } from '../modules/local/dada2_stats'                  addParams( options: modules['dada2_stats']          )
 include { DADA2_MERGE                   } from '../modules/local/dada2_merge'                  addParams( options: modules['dada2_merge']          )
 include { FORMAT_TAXONOMY               } from '../modules/local/format_taxonomy'
+include { ITSX_CUTASV                   } from '../modules/local/itsx_cutasv'                  addParams( options: modules['itsx_cutasv']          )         
+include { MERGE_STATS                   } from '../modules/local/merge_stats'                  addParams( options: modules['merge_stats']          )
 include { DADA2_TAXONOMY                } from '../modules/local/dada2_taxonomy'               addParams( options: dada2_taxonomy_options          )
 include { DADA2_ADDSPECIES              } from '../modules/local/dada2_addspecies'             addParams( options: dada2_addspecies_options        )
+include { FORMAT_TAXRESULTS             } from '../modules/local/format_taxresults'
 include { QIIME2_INSEQ                  } from '../modules/local/qiime2_inseq'                 addParams( options: modules['qiime2_inseq']         )
 include { QIIME2_FILTERTAXA             } from '../modules/local/qiime2_filtertaxa'            addParams( options: modules['qiime2_filtertaxa']    )
 include { QIIME2_INASV                  } from '../modules/local/qiime2_inasv'                 addParams( options: modules['qiime2_inasv']         )
 include { FILTER_STATS                  } from '../modules/local/filter_stats'                 addParams( options: modules['filter_stats']         )
+include { MERGE_STATS as MERGE_STATS_FILTERTAXA } from '../modules/local/merge_stats'          addParams( options: modules['merge_stats']          )
 include { QIIME2_BARPLOT                } from '../modules/local/qiime2_barplot'               addParams( options: modules['qiime2_barplot']       )
 include { METADATA_ALL                  } from '../modules/local/metadata_all'
 include { METADATA_PAIRWISE             } from '../modules/local/metadata_pairwise'
@@ -282,6 +286,13 @@ workflow AMPLISEQ {
 		TRUNCLEN.out
 			.toSortedList()
 			.set { ch_trunc }
+		//add one more warning or reminder that trunclenf and trunclenr were chosen automatically
+		ch_trunc.subscribe { 
+			if ( "${it[0][1]}".toInteger() + "${it[1][1]}".toInteger() <= 10 ) { log.warn "`--trunclenf` was set to ${it[0][1]} and `--trunclenr` to ${it[1][1]}, this is too low! Please either change `--trunc_qmin` (and `--trunc_rmin`), or set `--trunclenf` and `--trunclenr`." }
+			else if ( "${it[0][1]}".toInteger() <= 10 ) { log.warn "`--trunclenf` was set to ${it[0][1]}, this is too low! Please either change `--trunc_qmin` (and `--trunc_rmin`), or set `--trunclenf` and `--trunclenr`." }
+			else if ( "${it[1][1]}".toInteger() <= 10 ) { log.warn "`--trunclenr` was set to ${it[1][1]}, this is too low! Please either change `--trunc_qmin` (and `--trunc_rmin`), or set `--trunclenf` and `--trunclenr`." }
+			else log.warn "Probably everything is fine, but this is a reminder that `--trunclenf` was set automatically to ${it[0][1]} and `--trunclenr` to ${it[1][1]}. If this doesnt seem reasonable, then please change `--trunc_qmin` (and `--trunc_rmin`), or set `--trunclenf` and `--trunclenr` directly."
+			}
 	} else { 
 		Channel.from( [['FW', trunclenf], ['RV', trunclenr]] )
 			.toSortedList()
@@ -350,6 +361,9 @@ workflow AMPLISEQ {
 		DADA2_STATS.out.stats.map { meta, stats -> stats }.collect(), 
 		DADA2_RMCHIMERA.out.rds.map { meta, rds -> rds }.collect() )
 
+	//merge cutadapt_summary and dada_stats files
+	MERGE_STATS (CUTADAPT_WORKFLOW.out.summary, DADA2_MERGE.out.dada2stats)
+
     /*
      * SUBWORKFLOW / MODULES : Taxonomic classification with DADA2 and/or QIIME2
      */
@@ -361,17 +375,27 @@ workflow AMPLISEQ {
 	//DADA2
 	if (!params.skip_taxonomy) {
 		FORMAT_TAXONOMY ( ch_dada_ref_taxonomy.collect() )
-		DADA2_TAXONOMY ( ch_fasta, FORMAT_TAXONOMY.out.assigntax )
-		DADA2_ADDSPECIES ( DADA2_TAXONOMY.out.rds, FORMAT_TAXONOMY.out.addspecies )
-		ch_dada2_tax = DADA2_ADDSPECIES.out.tsv
+		if (!params.cut_its) {
+			DADA2_TAXONOMY ( ch_fasta, FORMAT_TAXONOMY.out.assigntax, 'ASV_tax.tsv' )
+			DADA2_ADDSPECIES ( DADA2_TAXONOMY.out.rds, FORMAT_TAXONOMY.out.addspecies, 'ASV_tax_species.tsv' )
+			ch_dada2_tax = DADA2_ADDSPECIES.out.tsv
+		//Cut out ITS region if long ITS reads
+		} else {
+		        ITSX_CUTASV ( ch_fasta )
+			ch_software_versions = ch_software_versions.mix(ITSX_CUTASV.out.version.ifEmpty(null))
+			ch_cut_fasta = ITSX_CUTASV.out.fasta
+			DADA2_TAXONOMY ( ch_cut_fasta, FORMAT_TAXONOMY.out.assigntax, 'ASV_ITS_tax.tsv' )
+			DADA2_ADDSPECIES ( DADA2_TAXONOMY.out.rds, FORMAT_TAXONOMY.out.addspecies, 'ASV_ITS_tax_species.tsv' )
+			FORMAT_TAXRESULTS ( DADA2_TAXONOMY.out.tsv, DADA2_ADDSPECIES.out.tsv, ch_fasta )
+		        ch_dada2_tax = FORMAT_TAXRESULTS.out.tsv
+	        }
 	}
 
 	//QIIME2
 	if ( run_qiime2 ) {
-		if (params.tax_to_classifier && params.fasta_to_classifier && !params.classifier) {
+		if (params.qiime_ref_taxonomy && !params.classifier) {
 			QIIME2_PREPTAX (
-				ch_fasta_to_classifier,
-				ch_tax_to_classifier,
+				ch_qiime_ref_taxonomy.collect(),
 				params.FW_primer,
 				params.RV_primer
 			)
@@ -398,7 +422,7 @@ workflow AMPLISEQ {
 		} else if ( params.dada_ref_taxonomy ) {
 			log.info "Use DADA2 taxonomy classification"
 			ch_tax = QIIME2_INTAX ( ch_dada2_tax ).qza
-		} else if ( (params.tax_to_classifier && params.fasta_to_classifier) || params.classifier ) {
+		} else if ( params.qiime_ref_taxonomy || params.classifier ) {
 			log.info "Use QIIME2 taxonomy classification"
 			ch_tax = QIIME2_TAXONOMY.out.qza
 		} else { 
@@ -417,6 +441,7 @@ workflow AMPLISEQ {
 					params.exclude_taxa
 			)
 			FILTER_STATS ( DADA2_MERGE.out.asv, QIIME2_FILTERTAXA.out.tsv )
+			MERGE_STATS_FILTERTAXA (MERGE_STATS.out.tsv, FILTER_STATS.out.tsv)
 			ch_asv = QIIME2_FILTERTAXA.out.asv
 			ch_seq = QIIME2_FILTERTAXA.out.seq
 		} else {

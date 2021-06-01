@@ -17,6 +17,7 @@ and processes data using the following steps:
     * [Cutadapt](#cutadapt) - Primer trimming
     * [MultiQC](#multiqc) - Aggregate report describing results
     * [DADA2](#dada2) - Infer Amplicon Sequence Variants (ASVs) and taxonomic classification
+      * [ITSx](#itsx) - Optionally, taxonomic classification can be performed on ITS region only
     * [QIIME2](#qiime2) - Secondary analysis
       * [Taxonomic classification](#taxonomic-classification) - Taxonomical classification of ASVs
       * [Exclude taxa](#exclude-taxa) - Remove unwanted ASV based on taxonomy
@@ -26,6 +27,7 @@ and processes data using the following steps:
       * [Alpha diversity indices](#alpha-diversity-indices) - Diversity within samples
       * [Beta diversity indices](#beta-diversity-indices) - Diversity between samples (e.g. PCoA plots)
       * [ANCOM](#ancom) - Differential abundance analysis
+    * [Read count report](#Read-count-report) - Report of read counts during various steps of the pipeline
     * [Pipeline information](#pipeline-information) - Report metrics generated during the workflow execution
   * [Citations](#citations)
 
@@ -91,6 +93,18 @@ Additionally, DADA2 taxonomically classifies the ASVs using pre-trained database
   * `*.err.convergence.txt`: Convergence values for DADA2's dada command, should reduce over several magnitudes and approaching 0.
   * `*.err.pdf`: Estimated error rates for each possible transition. The black line shows the estimated error rates after convergence of the machine-learning algorithm. The red line shows the error rates expected under the nominal definition of the Q-score. The estimated error rates (black line) should be a good fit to the observed rates (points), and the error rates should drop with increased quality.
   * `*_qual_stats.pdf`: Overall read quality profiles: heat map of the frequency of each quality score at each base position. The mean quality score at each position is shown by the green line, and the quartiles of the quality score distribution by the orange lines. The red line shows the scaled proportion of reads that extend to at least that position.
+
+#### ITSx
+
+Optionally, the ITS region can be extracted from each ASV sequence using ITSx, and taxonomic classification is performed based on the ITS sequence.
+
+**Output files:**
+
+* `itsx/`
+  * `ASV_ITS_seqs.full.fasta`: Fasta file with ITS region from each ASV sequence.
+* `dada2/`
+  * `ASV_ITS_tax.tsv`: Taxonomic classification with ITS region of each ASV sequence.
+  * `ASV_ITS_tax_species.tsv`: Species classification with ITS region of each ASV sequence.
 
 ### QIIME2
 
@@ -219,6 +233,14 @@ ANCOM is applied to each suitable or specified metadata column for 6 taxonomic l
     * treatment: depends on your metadata sheet or what metadata categories you have specified
     * taxonomic level: level-2 (phylum), level-3 (class), level-4 (order), level-5 (family), level-6 (genus), ASV
 
+## Read count report
+
+This report includes information on how many reads per sample passed each pipeline step in which a loss can occur. Specifically, how many read pairs entered cutadapt, were reverse complemented, passed trimming; how many read pairs entered DADA2, were denoised, merged and non-chimeric; and how many counts were lost during excluding unwanted tax and removing low abundance/prevalence sequences in QIIME2.
+
+**Output files:**
+
+* `overall_summary.tsv`
+
 ## Pipeline information
 
 [Nextflow](https://www.nextflow.io/docs/latest/tracing.html) provides excellent functionality for generating various reports relevant to the running and execution of the pipeline. This will allow you to troubleshoot errors with the running of the pipeline, and also provide you with other information such as launch commands, run times and resource usage.
@@ -232,15 +254,4 @@ ANCOM is applied to each suitable or specified metadata column for 6 taxonomic l
 
 ## Citations
 
-Besides citing the [pipeline](https://doi.org/10.5281/zenodo.3568091) and its [publication](https://doi.org/10.3389/fmicb.2020.550420), all tools that were used inside the pipeline have to be cited in a publication properly:
-
-* FastQC, "Andrews, Simon. "FastQC: a quality control tool for high throughput sequence data." (2010)."
-* Cutadapt "Martin, Marcel. "Cutadapt removes adapter sequences from high-throughput sequencing reads." EMBnet. journal 17.1 (2011): pp-10."
-* MultiQC, "Ewels, Philip, et al. "MultiQC: summarize analysis results for multiple tools and samples in a single report." Bioinformatics 32.19 (2016): 3047-3048."
-* QIIME2, "Bolyen, Evan, et al. "Reproducible, interactive, scalable and extensible microbiome data science using QIIME 2." Nature Biotechnology 37 (2019): 852–857."
-* DADA2, "Callahan, Benjamin J., et al. "DADA2: high-resolution sample inference from Illumina amplicon data." Nature methods 13.7 (2016): 581."
-* Matplotlib, "Hunter, John D. "Matplotlib: A 2D graphics environment." Computing in science & engineering 9.3 (2007): 90-95."
-* Feature-classifier, "Bokulich, Kaehler, et al. "Optimizing taxonomic classification of marker-gene amplicon sequences with QIIME 2's q2-feature-classifier plugin." Microbiome 6 (2018): 90.
-* SILVA database, "Quast, Pruesse, et al. 2013. 'The SILVA ribosomal RNA gene database project: improved data processing and web-based tools', Nucleic Acids Research, 41: D590-D96."
-* Mafft, "Katoh, Kazutaka and Standley, Daron M. "MAFFT multiple sequence alignment software version 7: improvements in performance and usability. Molecular biology and evolution 4 (2013): 772-780"
-* ANCOM, "Mandal, Siddhartha et al. “Analysis of composition of microbiomes: a novel method for studying microbial composition” Microbial ecology in health and disease vol. 26 27663. 29 May. 2015, doi:10.3402/mehd.v26.27663"
+An extensive list of references for the tools used by the pipeline can be found in the [`CITATIONS.md`](CITATIONS.md) file.
